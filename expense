@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+
+const { Client } = require('pg');
+
+console.log('Hello World');
