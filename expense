@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-
 const { Client } = require('pg');
+require('dotenv').config();
 
-console.log('Hello World');
+
+let client = new Client({ database: 'expenses' });
