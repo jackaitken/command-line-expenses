@@ -3,4 +3,24 @@ const { Client } = require('pg');
 require('dotenv').config();
 
 
-let client = new Client({ database: 'expenses' });
+let client = new Client({ database: 'expense_project' });
+
+async function queryDatabase(queryText) {
+  await client.connect();
+
+  let data = await client.query(queryText);
+
+  data.rows.forEach(tuple => {
+    let columns = [
+      `${tuple.id}`.padStart(3),
+      tuple.created_on.toDateString().padStart(10),
+      tuple.amount.padStart(12),
+      tuple.memo
+    ];
+    console.log(columns.join(' | '));
+  });
+  await client.end();
+}
+
+queryDatabase(`SELECT id, amount, created_on, memo FROM expenses
+  ORDER BY created_on ASC`);
