@@ -1,14 +1,26 @@
 #!/usr/bin/env node
 const { Client } = require('pg');
 require('dotenv').config();
-
-
 let client = new Client({ database: 'expense_project' });
 
-async function queryDatabase(queryText) {
-  await client.connect();
+let argument = process.argv[2];
 
-  let data = await client.query(queryText);
+switch(argument) {
+  case 'list': getList()
+    break;
+  case 'add': addExpense();
+    break;
+  default: printHelp();
+    break;
+}
+
+async function getList() {
+  let queryText = `SELECT id, amount, created_on, memo FROM expenses
+  ORDER BY created_on ASC`;
+
+  await client.connect().catch(err => logAndExit(err));
+
+  let data = await client.query(queryText).catch(err => logAndExit(err));
 
   data.rows.forEach(tuple => {
     let columns = [
@@ -19,8 +31,43 @@ async function queryDatabase(queryText) {
     ];
     console.log(columns.join(' | '));
   });
-  await client.end();
+
+  await client.end().catch(err => logAndExit(err));
 }
 
-queryDatabase(`SELECT id, amount, created_on, memo FROM expenses
-  ORDER BY created_on ASC`);
+async function addExpense() {
+  let [ amount, memo ] = process.argv.slice(3, 5);
+
+  if (!amount || !memo) {
+    logAndExit('You must provide an amount and memo');
+  }
+
+  let date = process.argv[6] ? process.argv[6] : `NOW()`;
+
+  await client.connect().catch(err => logAndExit(err));
+
+  await client.query(`INSERT INTO expenses (amount, created_on, memo)
+  VALUES (${amount}, ${date}, '${memo}')`).catch(err => logAndExit(err));
+  
+  await client.end().catch(err => logAndExit(err));
+}
+
+function printHelp() {
+  console.log(
+    `An expense recording system
+
+  Commands:
+    
+  add AMOUNT MEMO [DATE] - record a new expense
+  clear - delete all expenses
+  list - list all expenses
+  delete NUMBER - remove expense with id NUMBER
+  search QUERY - list expenses with a matching memo field
+  `
+  );
+}
+
+function logAndExit(rejection) {
+  console.log(rejection);
+  process.exit(1);
+}
