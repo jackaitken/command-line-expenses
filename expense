@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const PROCESS = require('process');
+const READLINE = require('readline');
 const { Client } = require('pg');
 require('dotenv').config();
 
@@ -19,16 +20,11 @@ class ExpenseData {
     let res = await this.client.query("SELECT * FROM expenses ORDER BY created_on ASC")
                                .catch(err => logAndExit(err));
 
-    res.rows.forEach(tuple => {
-      let columns = [
-        `${tuple.id}`.padStart(3),
-        tuple.created_on.toDateString().padStart(10),
-        tuple.amount.padStart(12),
-        tuple.memo
-      ];
-
-      console.log(columns.join(' | '));
-    });
+    if (res.rowCount === 0) {
+      console.log('No expenses added yet');
+    } else {
+      this.displayExpenses(res);
+    }
 
     await this.client.end().catch(err => logAndExit(err));
   }
@@ -43,6 +39,55 @@ class ExpenseData {
     await this.client.query(queryText, queryValues).catch(err => logAndExit(err));
 
     await this.client.end().catch(err => logAndExit(err));
+  }
+
+  async searchExpenses(searchTerm) {
+    await this.client.connect().catch(err => logAndExit(err));
+    let res = await this.client.query(`SELECT * FROM expenses
+      WHERE memo ILIKE $1`, [`%${searchTerm}%`]).catch(err => logAndExit(err));
+    
+    if (res.rowCount === 0) {
+      console.log('No expenses to search for');
+    } else {
+      this.displayExpenses(res);
+    }
+    await this.client.end().catch(err => logAndExit(err));
+  }
+
+  async deleteExpense(id) {
+    await this.client.connect().catch(err => logAndExit(err));
+    let res = await this.client.query(`SELECT * FROM expenses
+      WHERE id = $1`, [id]).catch(err => logAndExit(err));
+
+    if (res.rowCount === 1) {
+      await this.client.query(`DELETE FROM expenses
+      WHERE id = $1`, [id]).catch(err => logAndExit(err));
+      console.log('The following expense has been deleted:');
+      this.displayExpenses(res.rows);
+    } else {
+      console.log(`There is no expense with the id ${id}`);
+    }
+
+    await this.client.end().catch(err => logAndExit(err));
+  }
+
+  async deleteAllExpenses() {
+    await this.client.connect().catch(err => logAndExit(err));
+    await this.client.query(`DELETE FROM expenses`).catch(err => logAndExit(err));
+    console.log('All expenses have been deleted');
+    await this.client.end().catch(err => logAndExit(err));
+  }
+
+  displayExpenses(res) {
+    res.rows.forEach(tuple => {
+      let columns = [
+        `${tuple.id}`.padStart(3),
+        tuple.created_on.toDateString().padStart(10),
+        tuple.amount.padStart(12),
+        tuple.memo
+      ];
+      console.log(columns.join(' | '));
+    });
   }
 }
 
@@ -80,6 +125,22 @@ search QUERY - list expenses with a matching memo field`;
       } else {
         console.log('You must provide an amount and memo.')
       }
+    } else if (command === 'search') {
+      this.application.searchExpenses(args[3]);
+    } else if (command === 'delete') {
+      this.application.deleteExpense(args[3]);
+    } else if (command === 'clear') {
+      let rl = READLINE.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+      let questionText = 'This will remove all expenses. Are you sure? (y/n) ';
+      rl.question(questionText, (answer) => {
+        if (answer === 'y') {
+          this.application.deleteAllExpenses();
+        }
+        rl.close();
+      });
     } else {
       this.displayHelp();
     }
