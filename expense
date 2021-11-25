@@ -16,6 +16,7 @@ class ExpenseData {
 
   async listExpenses() {
     await this.client.connect().catch(err => logAndExit(err));
+    await this.setupSchema().catch(err => logAndExit(err));
 
     let res = await this.client.query("SELECT * FROM expenses ORDER BY created_on ASC")
                                .catch(err => logAndExit(err));
@@ -23,7 +24,9 @@ class ExpenseData {
     if (res.rowCount === 0) {
       console.log('No expenses added yet');
     } else {
+      this.displayCount(res.rowCount);
       this.displayExpenses(res);
+      if (res.rowCount > 1) this.displayTotal(res);
     }
 
     await this.client.end().catch(err => logAndExit(err));
@@ -31,6 +34,8 @@ class ExpenseData {
 
   async addExpense(amount, memo) {
     await this.client.connect().catch(err => logAndExit(err));
+    await this.setupSchema().catch(err => logAndExit(err));
+
     let date = new Date();
     date = date.toLocaleDateString();
     let queryText = 'INSERT INTO expenses (amount, memo, created_on) VALUES ($1, $2, $3)';
@@ -43,19 +48,23 @@ class ExpenseData {
 
   async searchExpenses(searchTerm) {
     await this.client.connect().catch(err => logAndExit(err));
+    await this.setupSchema().catch(err => logAndExit(err));
     let res = await this.client.query(`SELECT * FROM expenses
       WHERE memo ILIKE $1`, [`%${searchTerm}%`]).catch(err => logAndExit(err));
     
     if (res.rowCount === 0) {
       console.log('No expenses to search for');
     } else {
+      this.displayCount(rowCount);
       this.displayExpenses(res);
+      if (res.rowCount > 1) this.displayTotal(res);
     }
     await this.client.end().catch(err => logAndExit(err));
   }
 
   async deleteExpense(id) {
     await this.client.connect().catch(err => logAndExit(err));
+    await this.setupSchema().catch(err => logAndExit(err));
     let res = await this.client.query(`SELECT * FROM expenses
       WHERE id = $1`, [id]).catch(err => logAndExit(err));
 
@@ -73,9 +82,29 @@ class ExpenseData {
 
   async deleteAllExpenses() {
     await this.client.connect().catch(err => logAndExit(err));
+    await this.setupSchema().catch(err => logAndExit(err));
     await this.client.query(`DELETE FROM expenses`).catch(err => logAndExit(err));
     console.log('All expenses have been deleted');
     await this.client.end().catch(err => logAndExit(err));
+  }
+
+  async setupSchema() {
+    let tableExistsQuery = `SELECT COUNT(*) FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'expenses'`;
+
+    let tableCreationQuery = `
+    CREATE TABLE expenses (
+      id serial PRIMARY KEY,
+      amount numeric NOT NULL CHECK(amount > 0.01),
+      memo text NOT NULL,
+      created_on date NOT NULL
+    );`
+
+    let res = await this.client.query(tableExistsQuery).catch(err => logAndExit(err));
+
+    if (res.rows[0].count === '0') {
+      await this.client.query(tableCreationQuery).catch(err => logAndExit(err));
+    }
   }
 
   displayExpenses(res) {
@@ -88,6 +117,26 @@ class ExpenseData {
       ];
       console.log(columns.join(' | '));
     });
+  }
+
+  displayCount(rowCount) {
+    if (rowCount === 0) {
+      console.log('There are no expenses');
+    } else if (rowCount === 1) {
+      console.log(`There is ${rowCount} expense`);
+    } else {
+      console.log(`There are ${rowCount} expenses`);
+    }
+  }
+
+  displayTotal(res) {
+    let total = res.rows.reduce((acc, tuple) => {
+      acc += Number(tuple.amount);
+      return acc;
+    }, 0);
+    
+    console.log('-'.repeat(45));
+    console.log('Total', String(total.toFixed(2)).padStart(30));
   }
 }
 
